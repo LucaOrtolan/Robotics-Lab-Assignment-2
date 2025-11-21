@@ -115,43 +115,29 @@ class MoveItEEClient(Node):
         state = getattr(feedback_msg.feedback, "state", "<unknown>")
         self.get_logger().debug(f"[Feedback] {state}")
 
-
 def main():
     rclpy.init()
     node_ar = MoveItEEClient(control_group="arm")
     gr_node = MoveItEEClient(control_group="gripper")
-
-    parser = argparse.ArgumentParser(description="RX200 MoveIt control")
-    parser.add_argument("--pick_x", type=float, default=0.0)
-    parser.add_argument("--pick_y", type=float, default=0.0)
-    parser.add_argument("--place_x", type=float, default=-0.4)
-    parser.add_argument("--place_y", type=float, default=-0.20)
-    parser.add_argument("--z_hover", type=float, default=0.35)
-    parser.add_argument("--z_pick", type=float, default=0.02)
-    args = parser.parse_args()
-
+    
+    # Upright position coordinates
+    # Two separate motions: first move upwards, then change the EE's pitch 
     seq = [
-        (args.pick_x, args.pick_y, args.z_hover, True)
+        (0.1, 0.0, 0.5, True, None), # x, y, z, open gripper, pitch
     ]
     
     gr_pos = True
-    xy_min, xy_max = -0.5, 0.5
 
-    for x, y, z, gr in seq:
-        if x > xy_max or x < xy_min or y > xy_max or y < xy_min:
-            node_ar.get_logger().error(f"Target ({x},{y}) out of reach. Movement aborted.")
-            rclpy.shutdown()
-            return
-        
+    for x, y, z, gr, pitch in seq:
+
         while not node_ar.motion_done or not gr_node.gr_motion_done:
             rclpy.spin_once(node_ar, timeout_sec=0.1)
             rclpy.spin_once(gr_node, timeout_sec=0.1)
 
-        pitch = math.atan2(z, math.sqrt(x ** 2 + y ** 2))
-        # gr_node.get_logger().info(f"########### PITCH = {pitch} #################")
-
+        if pitch is None:
+            pitch = math.atan2(z, math.sqrt(x ** 2 + y ** 2))
     
-        node_ar.send_pose(x, y, z, pitch=0.6)
+        node_ar.send_pose(x, y, z, pitch=pitch)
         while not node_ar.motion_done:
             rclpy.spin_once(node_ar, timeout_sec=0.1)
 
@@ -167,6 +153,7 @@ def main():
         gr_pos = gr
 
     rclpy.shutdown()
+
 
 
 if __name__ == "__main__":

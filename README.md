@@ -13,6 +13,9 @@ source install/setup.bash
 
 # Run Commands:
 
+Activate the robot with:
+ros2 launch interbotix_xsarm_moveit xsarm_moveit.launch.py robot_model:=rx200 hardware_type:=actual
+
 To launch the default setup:
 ros2 run rx200_moveit_control  rx200_moveit_client
 
