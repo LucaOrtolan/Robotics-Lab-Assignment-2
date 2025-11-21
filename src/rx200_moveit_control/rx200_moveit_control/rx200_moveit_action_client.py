@@ -123,7 +123,7 @@ def main():
     # Upright position coordinates
     # Two separate motions: first move upwards, then change the EE's pitch 
     seq = [
-        (0.1, 0.0, 0.3, True, None), # x, y, z, open gripper, pitch
+        (0.3, 0.0, 0.45, True, 0.3), # x, y, z, open gripper, pitch
     ]
     
     gr_pos = True
@@ -136,7 +136,7 @@ def main():
 
         if pitch is None:
             pitch = math.atan2(z, math.sqrt(x ** 2 + y ** 2))
-    
+        
         node_ar.send_pose(x, y, z, pitch=pitch)
         while not node_ar.motion_done:
             rclpy.spin_once(node_ar, timeout_sec=0.1)
