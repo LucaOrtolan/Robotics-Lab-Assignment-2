@@ -123,7 +123,7 @@ def main():
     # Upright position coordinates
     # Two separate motions: first move upwards, then change the EE's pitch 
     seq = [
-        (0.1, 0.0, 0.5, True, None), # x, y, z, open gripper, pitch
+        (0.1, 0.0, 0.3, True, None), # x, y, z, open gripper, pitch
     ]
     
     gr_pos = True
