@@ -31,9 +31,6 @@ class MoveItEEClient(Node):
         self.base_link = "rx200/base_link"
         self.gripper_joint = "left_finger"  # change if your gripper uses different joint names
 
-    #
-    # Gripper move: open=True -> open, open=False -> closed
-    #
     def send_gr_pose(self, open=True):
         self.gr_motion_done = False
 
@@ -58,9 +55,6 @@ class MoveItEEClient(Node):
         future = self._client.send_goal_async(goal, feedback_callback=self._feedback_cb)
         future.add_done_callback(self._goal_response_cb)
 
-    #
-    # Move the end-effector to a desired pose (position+orientation)
-    #
     def send_pose(self, x, y, z, roll=0.0, pitch=1.4):
         self.motion_done = False
         self.get_logger().info(f"Moving to: ({x:.3f}, {y:.3f}, {z:.3f})")
@@ -102,9 +96,6 @@ class MoveItEEClient(Node):
         future = self._client.send_goal_async(goal, feedback_callback=self._feedback_cb)
         future.add_done_callback(self._goal_response_cb)
 
-    #
-    # Callbacks for goal handling
-    #
     def _goal_response_cb(self, future):
         goal_handle = future.result()
         if not goal_handle.accepted:
@@ -120,8 +111,6 @@ class MoveItEEClient(Node):
         result = future.result().result
         code = getattr(result.error_code, 'val', -1)
         self.get_logger().info(f"Result: error_code={code}")
-        # set both flags True because single action server is used for both kinds of goals,
-        # use whichever flag is currently False to keep consistent
         self.motion_done = True
         self.gr_motion_done = True
 
@@ -129,68 +118,75 @@ class MoveItEEClient(Node):
         state = getattr(feedback_msg.feedback, "state", "<unknown>")
         self.get_logger().debug(f"[Feedback] {state}")
 
-    #
-    # High-level pick & place loop
-    #
-    def pick_place_cubes(self, cubes_data: dict, color_order: list, place_position: list):
-        # reorder according to color_order (preserves only those colors asked)
+    def move_upright(self, upright_coords=[0.3, 0.0, 0.45], gripper=True, pitch=0.3):
+        x,y,z = upright_coords
+        self.send_pose(x, y, z, pitch=pitch)
+        while not self.motion_done:
+            rclpy.spin_once(self, timeout_sec=0.1)
+
+    def pick_place_cubes(self, cubes_data: dict, color_order: list, place_position: list, stacking_height=0.055):
+        # reorder according to color_order 
         cubes_data = {key: cubes_data[key] for key in color_order}
         x_place, y_place, z_place = place_position[0], place_position[1], place_position[2]
+
+        # open gripper
+        self.send_gr_pose(open=True)
+        while not self.gr_motion_done:
+            rclpy.spin_once(self, timeout_sec=0.1)
 
         for key, value in cubes_data.items():
             self.get_logger().info(f"Picking up {key} cube...")
 
             x_pick, y_pick, z_hover = value[0], value[1], value[2]
 
-            # Approach above the cube (hover)
+            # hover over the cube
             pitch = math.atan2(z_hover, math.sqrt(x_pick ** 2 + y_pick ** 2))
             self.send_pose(x_pick, y_pick, z_hover, pitch=pitch)
             # wait until motion completes
             while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-            # Lower slightly to pick (you might want a separate lower altitude)
-            z_low = max(0.0, z_hover - 0.05)  # small downward move; tune as needed
+            # lower slightly to pick
+            z_low = max(0.0, z_hover - 0.05)
             self.motion_done = False
             self.send_pose(x_pick, y_pick, z_low, pitch=pitch)
             while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-            # Close gripper
+            # close gripper
             self.send_gr_pose(open=False)
             while not self.gr_motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-            # Lift back to hover height
+            # lift back to pick position
             self.send_pose(x_pick, y_pick, z_hover, pitch=pitch)
             while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-            # Move to place position (with current z_place)
+            # move to place 
             self.get_logger().info(f"Placing down {key} cube...")
             pitch_place = math.atan2(z_place, math.sqrt(x_place ** 2 + y_place ** 2))
             self.send_pose(x_place, y_place, z_place + 0.02, pitch=pitch_place)  # approach a little above
             while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-            # Lower to release
+            # lower to place 
             self.send_pose(x_place, y_place, z_place, pitch=pitch_place)
             while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-            # Open gripper to release
+            # release cube
             self.send_gr_pose(open=True)
             while not self.gr_motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-            # Lift away after release
+            # lift away after release
             self.send_pose(x_place, y_place, z_place + 0.05, pitch=pitch_place)
             while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-            # Increase the stacking height for the next cube
-            z_place += 0.055  # tune to cube thickness
-            self.get_logger().info(f"Stack height now {z_place:.3f}")
+            # increase stacking height for next cube
+            z_place += stacking_height
 
 
 def main():
