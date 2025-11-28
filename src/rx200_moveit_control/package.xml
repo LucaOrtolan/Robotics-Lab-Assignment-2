@@ -3,23 +3,27 @@
 <package format="3">
   <name>rx200_moveit_control</name>
   <version>0.0.1</version>
-  <description>Package used for RX200 arm control via the moveit interface</description>
-  <maintainer email="james.petri@mu.ie">James Florin Petri</maintainer>
+  <description>Package</description>
+  <maintainer email="rishabh.jain.2026@mumail.ie">James Florin Petri</maintainer>
   <license>TODO: License declaration</license>
 
-  <test_depend>ament_copyright</test_depend>
-  <test_depend>ament_flake8</test_depend>
-  <test_depend>ament_pep257</test_depend>
-  <test_depend>python3-pytest</test_depend>
+  <buildtool_depend>ament_python</buildtool_depend>
 
+  <!-- Core ROS2 -->
   <depend>rclpy</depend>
   <depend>moveit_msgs</depend>
   <depend>shape_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
-  <depend>math</depend>
   <depend>tf_transformations</depend>
-  <depend>argparse</depend>
+  <depend>sensor_msgs</depend>
+  <depend>cv_bridge</depend>
+
+<!-- Only these because the launch file includes them -->
+  <exec_depend>interbotix_xsarm_control</exec_depend>
+  <exec_depend>interbotix_xsarm_moveit</exec_depend>
+  <exec_depend>realsense2_camera</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>
