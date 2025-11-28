@@ -1,17 +1,17 @@
+#!/usr/bin/env python3
 import math
-import argparse
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from moveit_msgs.action import MoveGroup
-from moveit_msgs.msg import Constraints,PositionConstraint,OrientationConstraint,MotionPlanRequest,JointConstraint
+from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint, MotionPlanRequest, JointConstraint
 from shape_msgs.msg import SolidPrimitive
 from geometry_msgs.msg import PoseStamped, Quaternion
 from tf_transformations import quaternion_from_euler
 
 
 class MoveItEEClient(Node):
-    def __init__(self, control_group="arm"):
+    def __init__(self):
         super().__init__('rx200_moveit_control')
 
         self.motion_done = True
@@ -21,18 +21,23 @@ class MoveItEEClient(Node):
         while not self._client.wait_for_server(timeout_sec=1.0):
             self.get_logger().warning("Waiting for MoveGroup action server...")
 
-        self.group_name = "interbotix_gripper" if control_group == "gripper" else "interbotix_arm"
+        # MoveIt group names used by this robot
+        self.arm_group = "interbotix_arm"
+        self.gripper_group = "interbotix_gripper"
+
+        # Defaults
+        self.group_name = self.arm_group
         self.ee_link = "rx200/ee_gripper_link"
         self.base_link = "rx200/base_link"
-        self.gripper_joint = "left_finger"
+        self.gripper_joint = "left_finger"  # change if your gripper uses different joint names
 
     def send_gr_pose(self, open=True):
         self.gr_motion_done = False
-        
+
         req = MotionPlanRequest()
-        req.group_name = self.group_name
+        req.group_name = self.gripper_group
         req.allowed_planning_time = 2.0
-        req.num_planning_attempts = 1
+        req.num_planning_attempts = 2
 
         jc = JointConstraint()
         jc.joint_name = self.gripper_joint
@@ -52,7 +57,7 @@ class MoveItEEClient(Node):
 
     def send_pose(self, x, y, z, roll=0.0, pitch=1.4):
         self.motion_done = False
-        self.get_logger().info(f"Moving to: ({x},{y},{z})")
+        self.get_logger().info(f"Moving to: ({x:.3f}, {y:.3f}, {z:.3f})")
 
         pose = PoseStamped()
         pose.header.frame_id = self.base_link
@@ -60,11 +65,10 @@ class MoveItEEClient(Node):
 
         yaw = math.atan2(y, x)
         q = quaternion_from_euler(roll, pitch, yaw)
-
         pose.pose.orientation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
 
         req = MotionPlanRequest()
-        req.group_name = self.group_name
+        req.group_name = self.arm_group
         req.allowed_planning_time = 5.0
         req.num_planning_attempts = 3
 
@@ -82,10 +86,7 @@ class MoveItEEClient(Node):
         oc.absolute_x_axis_tolerance = oc.absolute_y_axis_tolerance = oc.absolute_z_axis_tolerance = 0.05
         oc.weight = 1.0
 
-        goal_constraints = Constraints(
-            position_constraints=[pc],
-            orientation_constraints=[oc]
-        )
+        goal_constraints = Constraints(position_constraints=[pc], orientation_constraints=[oc])
         req.goal_constraints = [goal_constraints]
 
         goal = MoveGroup.Goal()
@@ -99,6 +100,7 @@ class MoveItEEClient(Node):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().error("Goal rejected")
+            # ensure waiting loops don't block forever
             self.motion_done = self.gr_motion_done = True
             return
 
@@ -109,61 +111,120 @@ class MoveItEEClient(Node):
         result = future.result().result
         code = getattr(result.error_code, 'val', -1)
         self.get_logger().info(f"Result: error_code={code}")
-        self.motion_done = self.gr_motion_done = True
+        self.motion_done = True
+        self.gr_motion_done = True
 
     def _feedback_cb(self, feedback_msg):
         state = getattr(feedback_msg.feedback, "state", "<unknown>")
         self.get_logger().debug(f"[Feedback] {state}")
 
+    def move_upright(self, upright_coords=[0.3, 0.0, 0.45], gripper=True, pitch=0.3):
+        x,y,z = upright_coords
+        self.send_pose(x, y, z, pitch=pitch)
+        while not self.motion_done:
+            rclpy.spin_once(self, timeout_sec=0.1)
+
+    def pick_place_cubes(self, cubes_data: dict, color_order: list, place_position: list, stacking_height=0.055):
+        # reorder according to color_order 
+        cubes_data = {key: cubes_data[key] for key in color_order}
+        x_place, y_place, z_place = place_position[0], place_position[1], place_position[2]
+
+        # open gripper
+        self.send_gr_pose(open=True)
+        while not self.gr_motion_done:
+            rclpy.spin_once(self, timeout_sec=0.1)
+
+        for key, value in cubes_data.items():
+            self.get_logger().info(f"Picking up {key} cube...")
+
+            x_pick, y_pick, z_hover = value[0], value[1], value[2]
+
+            # hover over the cube
+            pitch = math.atan2(z_hover, math.sqrt(x_pick ** 2 + y_pick ** 2))
+            self.send_pose(x_pick, y_pick, z_hover, pitch=pitch)
+            # wait until motion completes
+            while not self.motion_done:
+                rclpy.spin_once(self, timeout_sec=0.1)
+
+            # lower slightly to pick
+            z_low = max(0.0, z_hover - 0.05)
+            self.motion_done = False
+            self.send_pose(x_pick, y_pick, z_low, pitch=pitch)
+            while not self.motion_done:
+                rclpy.spin_once(self, timeout_sec=0.1)
+
+            # close gripper
+            self.send_gr_pose(open=False)
+            while not self.gr_motion_done:
+                rclpy.spin_once(self, timeout_sec=0.1)
+
+            # lift back to pick position
+            self.send_pose(x_pick, y_pick, z_hover, pitch=pitch)
+            while not self.motion_done:
+                rclpy.spin_once(self, timeout_sec=0.1)
+
+            # move to place 
+            self.get_logger().info(f"Placing down {key} cube...")
+            pitch_place = math.atan2(z_place, math.sqrt(x_place ** 2 + y_place ** 2))
+            self.send_pose(x_place, y_place, z_place + 0.02, pitch=pitch_place)  # approach a little above
+            while not self.motion_done:
+                rclpy.spin_once(self, timeout_sec=0.1)
+
+            # lower to place 
+            self.send_pose(x_place, y_place, z_place, pitch=pitch_place)
+            while not self.motion_done:
+                rclpy.spin_once(self, timeout_sec=0.1)
+
+            # release cube
+            self.send_gr_pose(open=True)
+            while not self.gr_motion_done:
+                rclpy.spin_once(self, timeout_sec=0.1)
+
+            # lift away after release
+            self.send_pose(x_place, y_place, z_place + 0.05, pitch=pitch_place)
+            while not self.motion_done:
+                rclpy.spin_once(self, timeout_sec=0.1)
+
+            # increase stacking height for next cube
+            z_place += stacking_height
+
+
 def main():
     rclpy.init()
-    node_ar = MoveItEEClient(control_group="arm")
-    gr_node = MoveItEEClient(control_group="gripper")
-    
-    # Upright position coordinates
-    # Two separate motions: first move upwards, then change the EE's pitch 
+    node = MoveItEEClient()
+
+    # Upright position (open gripper and set pitch)
     seq = [
-        (0.3, 0.0, 0.45, True, 0.3), # x, y, z, open gripper, pitch
+        (0.3, 0.0, 0.45, True, 0.3),  # x, y, z, open gripper (bool), pitch
     ]
-    
-    gr_pos = True
+    motion = seq[0]
+    x, y, z, gr_open, pitch = motion
 
-    for x, y, z, gr, pitch in seq:
+    cubes_data = {
+        "red": [0.25, 0.15, 0.075],
+        "blue": [0.25, -0.15, 0.075],
+        "yellow": [0.25, -0.2, 0.075]
+    }
+    color_order = ["red", "blue", "yellow"]
+    place_position = [0.3, 0.0, 0.055]
 
-        while not node_ar.motion_done or not gr_node.gr_motion_done:
-            rclpy.spin_once(node_ar, timeout_sec=0.1)
-            rclpy.spin_once(gr_node, timeout_sec=0.1)
+    # Move to upright
+    node.send_pose(x, y, z, pitch=pitch)
+    while not node.motion_done:
+        rclpy.spin_once(node, timeout_sec=0.1)
 
-        if pitch is None:
-            pitch = math.atan2(z, math.sqrt(x ** 2 + y ** 2))
-        
-        node_ar.send_pose(x, y, z, pitch=pitch)
-        while not node_ar.motion_done:
-            rclpy.spin_once(node_ar, timeout_sec=0.1)
+    # Ensure gripper open
+    node.send_gr_pose(open=gr_open)
+    while not node.gr_motion_done:
+        rclpy.spin_once(node, timeout_sec=0.1)
 
-        gr_node.send_gr_pose(open=gr)
-        if not gr_pos:
-            gr_node.get_logger().info(f"Gripper: already closed")
-        else:
-            gr_node.get_logger().info(f"Gripper: {'Open' if open else 'Close'}")
+    # Run pick & place loop
+    node.pick_place_cubes(cubes_data, color_order, place_position)
 
-        while not gr_node.gr_motion_done:
-            rclpy.spin_once(gr_node, timeout_sec=0.1)
-        
-        gr_pos = gr
-
+    # After finished
+    node.get_logger().info("Pick and place finished.")
     rclpy.shutdown()
-
 
 
 if __name__ == "__main__":
     main()
-
-
-# Coordinates for initial pose snap
-# x=0.15, y=0, z=.3, pitch=.6
-# Once in this position, we snap the pose
-# Then, we'll need to cluster the cubes' colors and store them 
-# Lastly, we need to implement the pick and place motion based on the order specified by the user
-
-# We can use 3 nodes: one for the arm, one for the camera and one for the clustering (maybe not necessary?)
