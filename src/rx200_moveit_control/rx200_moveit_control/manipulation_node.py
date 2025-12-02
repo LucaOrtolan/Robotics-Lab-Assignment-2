@@ -118,7 +118,7 @@ class MoveItEEClient(Node):
         state = getattr(feedback_msg.feedback, "state", "<unknown>")
         self.get_logger().debug(f"[Feedback] {state}")
 
-    def move_upright(self, upright_coords=[0.2, 0.0, 0.4], pitch=math.radians(40)):
+    def move_upright(self, upright_coords=[0.15, 0.0, 0.35], pitch=math.radians(30)):
         x,y,z = upright_coords
         self.send_pose(x, y, z, pitch=pitch)
         while not self.motion_done:
@@ -200,13 +200,13 @@ def main():
     }
     color_order = ["red", "blue", "yellow"]
     place_position = [0.3, 0.0, 0.085]
-    attempts = 5
+    attempts = 0
     while attempts>=0:
         # Move to upright
         node.move_upright()
 
         # Run pick & place loop
-        node.pick_place_cubes(cubes_data, color_order, place_position)
+        #node.pick_place_cubes(cubes_data, color_order, place_position)
 
         attempts-=1
 
