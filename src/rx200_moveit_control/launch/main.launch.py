@@ -9,7 +9,7 @@ def generate_launch_description():
     xsarm_moveit_path = get_package_share_directory('interbotix_xsarm_moveit')
 
     return LaunchDescription([
-        # 1) MoveIt + robot (same as your CLI command)
+        # 1. MoveIt + Hardware
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(xsarm_moveit_path, 'launch', 'xsarm_moveit.launch.py')
@@ -17,10 +17,30 @@ def generate_launch_description():
             launch_arguments={
                 'robot_model': 'rx200',
                 'hardware_type': 'actual',
+                'use_world_frame': 'true',
             }.items()
         ),
 
-        # 2) RealSense
+        # 2. Static TF: Connects the two trees
+        #    Note: arguments are x y z yaw pitch roll parent child
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='camera_static_tf',
+            arguments=[
+                '--x', '0.05', 
+                '--y', '0.00', 
+                '--z', '0.08',
+                '--roll', '0.0', 
+                '--pitch', '0.9', 
+                '--yaw', '0.0',
+                '--frame-id', 'rx200/ee_gripper_link',  # Parent frame (from Tree 1)
+                '--child-frame-id', 'camera_link'       # Child frame (Root of Tree 2)
+            ],
+            output='screen'
+        ),
+
+        # 3. RealSense Camera
         Node(
             package='realsense2_camera',
             executable='realsense2_camera_node',
@@ -28,30 +48,19 @@ def generate_launch_description():
             parameters=[{
                 'enable_color': True,
                 'enable_depth': True,
-                'enable_pointcloud': True,
                 'align_depth.enable': True,
+                # IMPORTANT: This must match the child frame ID above
+                'base_frame_id': 'camera_link',
             }],
             output='screen'
         ),
 
-        # 3) Static TF: ee -> camera
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='camera_tf_publisher',
-            arguments=[
-                '0.198', '-0.004', '0.102',
-                '-0.010', '1.127', '-0.029',
-                'rx200/ee_gripper_link',
-                'camera_link'
-            ]
-        ),
-
-        # 4) Manipulation node (scan pose)
+        # 4. Your Nodes
         Node(
             package='rx200_moveit_control',
             executable='manipulation_node',
             name='manipulation_node',
             output='screen'
         ),
+        
     ])
