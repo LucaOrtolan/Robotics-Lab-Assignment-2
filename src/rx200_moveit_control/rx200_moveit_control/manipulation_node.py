@@ -118,7 +118,7 @@ class MoveItEEClient(Node):
         state = getattr(feedback_msg.feedback, "state", "<unknown>")
         self.get_logger().debug(f"[Feedback] {state}")
 
-    def move_upright(self, upright_coords=[0.15, 0.0, 0.35], pitch=math.radians(30)):
+    def move_upright(self, upright_coords=[0.2, 0.0, 0.40], pitch=math.radians(30)):
         x,y,z = upright_coords
         self.send_pose(x, y, z, pitch=pitch)
         while not self.motion_done:

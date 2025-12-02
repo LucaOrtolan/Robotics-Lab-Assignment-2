@@ -42,7 +42,7 @@ class VisionNode(Node):
                 'color_bgr': (0, 255, 255)
             },
             'blue': {
-                'lower': np.array([57, 0, 0]),
+                'lower': np.array([57, 0, 0]),      # BGR
                 'upper': np.array([255, 120, 120]),
                 'color_bgr': (255, 0, 0)
             }
