@@ -20,10 +20,13 @@
   <depend>cv_bridge</depend>
 
 <!-- Only these because the launch file includes them -->
-  <exec_depend>interbotix_xsarm_control</exec_depend>
+  <!-- <exec_depend>interbotix_xsarm_control</exec_depend> -->
   <exec_depend>interbotix_xsarm_moveit</exec_depend>
   <exec_depend>realsense2_camera</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>rx200_xsarm_descriptions</exec_depend>
+
+
 
   <export>
     <build_type>ament_python</build_type>
