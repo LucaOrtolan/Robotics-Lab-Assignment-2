@@ -1,12 +1,38 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.actions import IncludeLaunchDescription, TimerAction, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
 
 def generate_launch_description():
     xsarm_moveit_path = get_package_share_directory('interbotix_xsarm_moveit')
+
+    # ==========================================
+    # 0. USER ARGUMENTS
+    # ==========================================
+    cube_order_arg = DeclareLaunchArgument(
+        'cube_order',
+        default_value='r,y,b',
+        description='Comma-separated order of cubes, e.g. r,y,b'
+    )
+
+    place_x_arg = DeclareLaunchArgument(
+        'place_x',
+        default_value='0.2',
+        description='Place point X coordinate (meters)'
+    )
+
+    place_y_arg = DeclareLaunchArgument(
+        'place_y',
+        default_value='0.0',
+        description='Place point Y coordinate (meters)'
+    )
+
+    cube_order = LaunchConfiguration('cube_order')
+    place_x = LaunchConfiguration('place_x')
+    place_y = LaunchConfiguration('place_y')
 
     # ==========================================
     # 1. LAUNCH MOVEIT (uses default URDF)
@@ -123,12 +149,16 @@ def generate_launch_description():
                 package='rx200_moveit_control',
                 executable='manipulation_node',
                 name='manipulation_node',
-                output='screen'
+                output='screen',
+                arguments=[cube_order, place_x, place_y]
             )
         ]
     )
 
     return LaunchDescription([
+        cube_order_arg,
+        place_x_arg,
+        place_y_arg,
         moveit_launch,
         camera_mount_tf,
         camera_link_tf,
