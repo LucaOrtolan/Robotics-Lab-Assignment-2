@@ -29,6 +29,8 @@ setup(
             'vision_node = rx200_moveit_control.vision_node:main',
             'manipulation_node = rx200_moveit_control.manipulation_node:main',
             'coordinator_node = rx200_moveit_control.coordinator_node:main',
+            'add_camera_to_scene = rx200_moveit_control.add_camera_to_scene:main',
+            'hsv_calibrator=rx200_moveit_control.hsv_calibrator:main',
         ],
     },
 )

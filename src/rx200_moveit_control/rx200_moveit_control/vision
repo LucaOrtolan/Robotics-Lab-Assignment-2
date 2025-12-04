@@ -39,7 +39,7 @@ class CubeDetectionNode(Node):
         # Color ranges for RGB cubes (HSV format)
         # Tuned for typical lighting conditions
         self.color_ranges = {
-            'Red': (np.array([170, 50, 50]), np.array([198, 255, 255])),
+            'Red': (np.array([170, 50, 50]), np.array([195, 255, 255])),
             'Blue': (np.array([100, 150, 50]), np.array([130, 255, 255])),
             'Yellow': (np.array([15, 100, 100]), np.array([35, 255, 255])),
         }
