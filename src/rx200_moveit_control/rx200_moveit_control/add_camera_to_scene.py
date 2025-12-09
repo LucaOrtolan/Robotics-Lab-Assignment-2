@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""
-Add camera to MoveIt planning scene so collision avoidance works.
-This script MUST run AFTER MoveIt is fully initialized.
-"""
 
 import rclpy
 from rclpy.node import Node
@@ -11,6 +6,10 @@ from shape_msgs.msg import SolidPrimitive
 from geometry_msgs.msg import Pose
 import time
 import math
+from tf_transformations import quaternion_from_euler
+from geometry_msgs.msg import Quaternion
+
+
 
 class CameraSceneUpdater(Node):
     def __init__(self):
@@ -33,15 +32,12 @@ class CameraSceneUpdater(Node):
         self.attach_camera_to_wrist()
         
         self.get_logger().info('✓ Camera added to MoveIt planning scene!')
-        self.get_logger().info('✓ Camera attached to rx200/wrist_link')
-        self.get_logger().info('✓ MoveIt will now avoid collisions with camera')
 
     def add_camera_collision(self):
-        """Add camera as a collision object in the planning scene"""
         
         collision_object = CollisionObject()
         # Frame must be namespaced to match URDF convention
-        collision_object.header.frame_id = 'rx200/camera_mount'
+        collision_object.header.frame_id = 'rx200/wrist_link'
         collision_object.id = 'realsense_d415'
         collision_object.operation = CollisionObject.ADD
         
@@ -49,17 +45,18 @@ class CameraSceneUpdater(Node):
         box = SolidPrimitive()
         box.type = SolidPrimitive.BOX
         # dimensions = [length, width, height] in meters
-        box.dimensions = [0.099, 0.023, 0.02]  # 10cm × 2.3cm × 2cm
+        box.dimensions = [0.025, 0.1, 0.025]  # 10cm × 2.3cm × 2cm
         
         # Position the box relative to camera_mount frame
         pose = Pose()
-        pose.position.x = 0.06
-        pose.position.y = -0.025
-        pose.position.z = 0.045  # Must match camera_link_tf offset!
-        pose.orientation.w = 1.0  
-        pose.orientation.x = 0.0
-        pose.orientation.y = 0.0
-        pose.orientation.z = 1.0
+        pose.position.x = 0.105
+        pose.position.y = 0.00
+        pose.position.z = 0.11  # Must match camera_link_tf offset!
+        roll = 0.0
+        pitch = math.radians(45)  # Camera faces downward
+        yaw = 0.0
+        q = quaternion_from_euler(roll, pitch, yaw)
+        pose.orientation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
         
         collision_object.primitives.append(box)
         collision_object.primitive_poses.append(pose)
