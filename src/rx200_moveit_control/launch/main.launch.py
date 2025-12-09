@@ -14,8 +14,8 @@ def generate_launch_description():
     # ==========================================
     cube_order_arg = DeclareLaunchArgument(
         'cube_order',
-        default_value='r,y,b',
-        description='Comma-separated order of cubes, e.g. r,y,b'
+        default_value='red,yellow,blue',
+        description='Comma-separated order of cubes, e.g. red,yellow,blue'
     )
 
     place_x_arg = DeclareLaunchArgument(
@@ -103,7 +103,22 @@ def generate_launch_description():
     )
 
     # ==========================================
-    # 5. MANIPULATION NODE (delayed 5 seconds)
+    # 5. VISION NODE (delayed 3 seconds)
+    # ==========================================
+    vision_node = TimerAction(
+        period=3.0,
+        actions=[
+            Node(
+                package='rx200_moveit_control',
+                executable='vision_node',   # entry point name from setup.py
+                name='cube_detection_node',
+                output='screen'
+            )
+        ]
+    )
+
+    # ==========================================
+    # 6. MANIPULATION NODE (delayed 5 seconds)
     # ==========================================
     manipulation_node = TimerAction(
         period=5.0,
@@ -126,7 +141,8 @@ def generate_launch_description():
         camera_mount_tf,
         realsense_node,
         planning_scene_node,
-        manipulation_node,
+        vision_node,
+        manipulation_node
     ])
 
 

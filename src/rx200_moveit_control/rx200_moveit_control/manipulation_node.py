@@ -10,7 +10,8 @@ from shape_msgs.msg import SolidPrimitive
 from geometry_msgs.msg import PoseStamped, Quaternion
 from tf_transformations import quaternion_from_euler
 import time
-
+from std_msgs.msg import String
+import json
 
 class MoveItEEClient(Node):
     def __init__(self):
@@ -32,6 +33,16 @@ class MoveItEEClient(Node):
         self.ee_link = "rx200/ee_gripper_link"
         self.base_link = "rx200/base_link"
         self.gripper_joint = "left_finger"  # change if your gripper uses different joint names
+
+        # Subscriber for cube detection
+        self.cubes_data = None
+        self.cubes_received = False
+        self.subscription = self.create_subscription(
+            String,
+            '/detected_cubes',
+            self.cubes_callback,
+            10
+        )
 
     def send_gr_pose(self, open=True):
         self.gr_motion_done = False
@@ -125,8 +136,18 @@ class MoveItEEClient(Node):
         while not self.motion_done:
             rclpy.spin_once(self, timeout_sec=0.1)
 
+    def cubes_callback(self, msg):
+        """Receive cube positions from vision node"""
+        try:
+            self.cubes_data = dict(json.loads(msg.data))
+            if len(self.cubes_data)==3:
+                self.cubes_received = True
+        except json.JSONDecodeError as e:
+            self.get_logger().error(f'Invalid JSON from vision: {e}')
+
     def pick_place_cubes(self, cubes_data: dict, color_order: list, place_position: list, stacking_height=0.0425):
         # reorder according to color_order
+        cubes_data = {k.lower(): v for k, v in cubes_data.items()} # conver all keys into lowercase
         cubes_data = {key: cubes_data[key] for key in color_order}
         x_place, y_place, z_place = place_position[0], place_position[1], place_position[2]
 
@@ -219,21 +240,21 @@ def main(args=None):
 
     # Move to upright
     node.move_upright()
-
     # Vision node needs to be called here
-    # Replace with coordinates detected by the camera
-    cubes_data = {
-        "r": [0.25, 0.15, 0.085],
-        "b": [0.25, -0.15, 0.085],
-        "y": [0.2, -0.2, 0.085]
-    }
+    while True:
+        if node.cubes_received:
+            node.get_logger().info("All cubes detected!")
+            cubes_data = node.cubes_data
+            node.get_logger().info(f"########### {cubes_data} ###########")
+            # Run pick & place loop
+            node.pick_place_cubes(cubes_data, color_order, place_position)
+            node.get_logger().info("Pick and place finished.")
+            break
 
-    # Run pick & place loop
-    node.pick_place_cubes(cubes_data, color_order, place_position)
+        node.get_logger().info("Not all cubes have been detected yet")
+        rclpy.spin_once(node)
 
-    node.get_logger().info("Pick and place finished.")
     rclpy.shutdown()
-
 
 if __name__ == "__main__":
     main()

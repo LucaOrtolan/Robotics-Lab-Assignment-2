@@ -1,14 +1,14 @@
 import subprocess
 
 # Allowed short codes
-VALID_COLORS = {"r", "y", "b"}
+VALID_COLORS = {"red", "yellow", "blue"}
 # flags to check if the inputs are valid
 
 interface = True
 valid_order=False
 while interface:
     if not valid_order:
-        order = input("Enter cube order (e.g. r,y,b): ")
+        order = input("Enter cube order (e.g. red,yellow,blue): ")
 
         # Validate cube order
         colors = [c.strip() for c in order.split(",") if c.strip()]
@@ -18,7 +18,7 @@ while interface:
         len(colors) != 3
         or any(c not in VALID_COLORS for c in colors)
         or len(set(colors)) != 3):  # no duplicates
-            print("Error: cube order must be a comma-separated permutation of r,y,b, e.g. r,y,b")
+            print("Error: cube order must be a comma-separated permutation of red,yellow,blue")
             continue
         else:
             # don't ask again for the order

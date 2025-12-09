@@ -14,7 +14,8 @@ from cv_bridge import CvBridge
 import cv2
 import numpy as np
 from tf2_ros import TransformListener, Buffer
-import tf2_geometry_msgs
+from std_msgs.msg import String
+import json
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 import threading
 
@@ -42,11 +43,18 @@ class CubeDetectionNode(Node):
         self.detected_cubes = []
         self.frame_count = 0
         self.lock = threading.Lock()
-        
+
+        # Cube positions publisher
+        self.cube_positions_pub = self.create_publisher(
+            String, 
+            '/detected_cubes', 
+            10
+        )
+
         # Color ranges for RGB cubes (HSV format)
         self.color_ranges = {
-            'Red1': (np.array([170, 55, 50]), np.array([195, 255, 255])),
-            'Red2':    (np.array([0, 50, 50]), np.array([15, 255, 255])),
+            'RED': (np.array([170, 55, 50]), np.array([195, 255, 255])),
+            'red':    (np.array([0, 50, 50]), np.array([15, 255, 255])),
             'Blue':   (np.array([90, 80, 40]), np.array([140, 255, 255])),
             'Yellow': (np.array([10, 50, 80]), np.array([50, 255, 255])),
         }
@@ -84,6 +92,8 @@ class CubeDetectionNode(Node):
         
         # Logging timer (every 30 frames)
         self.create_timer(1.0, self.log_cube_positions)
+        self.create_timer(1.0, self.publish_cube_positions)
+
         
         self.get_logger().info('✓ Cube Detection Node Initialized (WITH SYNC)')
         self.get_logger().info('Looking for 3 cubes: Red, Blue, Yellow')
@@ -370,6 +380,31 @@ class CubeDetectionNode(Node):
                 self.get_logger().warn(f'Only {len(world_cubes)}/3 cubes have 3D coordinates (check TF tree)')
         else:
             self.get_logger().warn(f'Only {len(cubes)}/3 cubes detected')
+
+    def publish_cube_positions(self):
+        """Publish detected cubes as JSON string for manipulator"""
+        with self.lock:
+            cubes = self.detected_cubes.copy()
+        
+        if not cubes:
+            return
+        
+        # Create dict with color -> [x,y,z] format expected by manipulator
+        cubes_dict = {}
+        for cube in cubes:
+            if cube['world_x'] is not None:
+                color_key = cube['color'].lower()  # 'red', 'blue', 'yellow'
+                cubes_dict[color_key] = [
+                    float(cube['world_x']),
+                    float(cube['world_y']), 
+                    float(cube['world_z']) + 0.03  # Hover offset for pick
+                ]
+
+        msg = String()
+        msg.data = json.dumps(cubes_dict)
+        self.cube_positions_pub.publish(msg)
+        self.get_logger().info(f'Published {len(cubes_dict)} cubes: {msg.data}')
+
 
 
     def display_results(self, image):
