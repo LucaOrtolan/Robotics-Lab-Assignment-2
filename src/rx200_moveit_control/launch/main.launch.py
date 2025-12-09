@@ -112,7 +112,8 @@ def generate_launch_description():
                 package='rx200_moveit_control',
                 executable='manipulation_node',
                 name='manipulation_node',
-                output='screen'
+                output='screen',
+                arguments=[cube_order, place_x, place_y]
             )
         ]
     )
