@@ -140,15 +140,15 @@ class MoveItEEClient(Node):
         """Receive cube positions from vision node"""
         try:
             self.cubes_data = dict(json.loads(msg.data))
-            if len(self.cubes_data)==3:
+            if len(self.cubes_data)==1:
                 self.cubes_received = True
         except json.JSONDecodeError as e:
             self.get_logger().error(f'Invalid JSON from vision: {e}')
 
     def pick_place_cubes(self, cubes_data: dict, color_order: list, place_position: list, stacking_height=0.0425):
         # reorder according to color_order
-        cubes_data = {k.lower(): v for k, v in cubes_data.items()} # conver all keys into lowercase
-        cubes_data = {key: cubes_data[key] for key in color_order}
+        # cubes_data = {k.lower(): v for k, v in cubes_data.items()} # conver all keys into lowercase
+        # cubes_data = {key: cubes_data[key] for key in color_order}
         x_place, y_place, z_place = place_position[0], place_position[1], place_position[2]
 
         # open gripper
@@ -159,7 +159,8 @@ class MoveItEEClient(Node):
         for key, value in cubes_data.items():
             self.get_logger().info(f"Picking up {key} cube...")
 
-            x_pick, y_pick, z_hover = value[0], value[1], value[2]
+            x_pick, y_pick, z_hover = value[0], value[1], 0.2
+            z_pick = 0.04
 
             # hover over the cube
             pitch = 1.57
@@ -168,14 +169,14 @@ class MoveItEEClient(Node):
                 rclpy.spin_once(self, timeout_sec=0.1)
 
             # lower to pick
-            self.send_pose(x_pick, y_pick, z_hover - 0.055, pitch=pitch)
+            self.send_pose(x_pick, y_pick, z_pick, pitch=pitch)
             while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-            # close gripper
-            self.send_gr_pose(open=False)
-            while not self.gr_motion_done:
-                rclpy.spin_once(self, timeout_sec=0.1)
+            # # close gripper
+            # self.send_gr_pose(open=False)
+            # while not self.gr_motion_done:
+            #     rclpy.spin_once(self, timeout_sec=0.1)
 
             # lift up
             self.send_pose(x_pick, y_pick, z_hover, pitch=pitch)
@@ -185,22 +186,22 @@ class MoveItEEClient(Node):
             # move to place
             self.get_logger().info(f"Placing down {key} cube...")
             pitch_place = 1.57
-            self.send_pose(x_place, y_place, z_place, pitch=pitch_place)
+            self.send_pose(x_place, y_place, z_hover, pitch=pitch_place)
             while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
             # lower to place
-            self.send_pose(x_place, y_place, z_place - 0.065, pitch=pitch_place)
+            self.send_pose(x_place, y_place, z_place, pitch=pitch_place)
             while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-            # release cube
-            self.send_gr_pose(open=True)
-            while not self.gr_motion_done:
-                rclpy.spin_once(self, timeout_sec=0.1)
+            # # release cube
+            # self.send_gr_pose(open=True)
+            # while not self.gr_motion_done:
+            #     rclpy.spin_once(self, timeout_sec=0.1)
 
             # lift away
-            self.send_pose(x_place, y_place, z_place + 0.05, pitch=pitch_place)
+            self.send_pose(x_place, y_place, z_hover, pitch=pitch_place)
             while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
@@ -227,7 +228,7 @@ def main(args=None):
     place_y = float(place_y_str)
 
     # Fixed Z for placing (can be parameterised later)
-    place_z = 0.085
+    place_z = 0.03
     place_position = [place_x, place_y, place_z]
 
     time.sleep(12)  # wait for everything to initialize
@@ -241,6 +242,9 @@ def main(args=None):
     # Move to upright
     node.move_upright()
     # Vision node needs to be called here
+
+
+
     while True:
         if node.cubes_received:
             node.get_logger().info("All cubes detected!")

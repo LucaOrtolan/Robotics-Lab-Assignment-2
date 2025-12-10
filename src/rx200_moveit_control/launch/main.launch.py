@@ -60,9 +60,9 @@ def generate_launch_description():
         name='camera_mount_broadcaster',
         arguments=[
             # Translation (meters): forward 2.5cm, up 3cm
-            '0.0', '0.0', '0.0',
+            '0.105', '0.04', '0.11',
             # Rotation (radians): no tilt
-            '0.0', '0.0', '0.0',
+            '0.0', '0.785', '0.0',
             # Frame names (parent → child)
             'rx200/wrist_link',        # Must match URDF namespace
             'camera_link',      # Our custom frame
@@ -141,7 +141,7 @@ def generate_launch_description():
         camera_mount_tf,
         realsense_node,
         planning_scene_node,
-        vision_node,
+        # vision_node,
         manipulation_node
     ])
 
