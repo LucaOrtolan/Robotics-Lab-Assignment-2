@@ -54,7 +54,7 @@ class MoveItEEClient(Node):
 
         jc = JointConstraint()
         jc.joint_name = self.gripper_joint
-        jc.position = 0.05 if open else 0.02
+        jc.position = 0.05 if open else 0.0215
         jc.tolerance_above = jc.tolerance_below = 0.01
         jc.weight = 1.0
 
@@ -160,7 +160,7 @@ class MoveItEEClient(Node):
             self.get_logger().info(f"Picking up {key} cube...")
 
             x_pick, y_pick, z_hover = value[0], value[1], 0.2
-            z_pick = 0.04
+            z_pick = 0.035
 
             # hover over the cube
             pitch = 1.57
@@ -173,36 +173,36 @@ class MoveItEEClient(Node):
             while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-            # # close gripper
-            # self.send_gr_pose(open=False)
-            # while not self.gr_motion_done:
-            #     rclpy.spin_once(self, timeout_sec=0.1)
+            # close gripper
+            self.send_gr_pose(open=False)
+            while not self.gr_motion_done and not self.motion_done:
+                rclpy.spin_once(self, timeout_sec=0.1)
 
             # lift up
             self.send_pose(x_pick, y_pick, z_hover, pitch=pitch)
-            while not self.motion_done:
+            while not self.motion_done and self.gr_motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
             # move to place
             self.get_logger().info(f"Placing down {key} cube...")
             pitch_place = 1.57
             self.send_pose(x_place, y_place, z_hover, pitch=pitch_place)
-            while not self.motion_done:
+            while not self.motion_done and self.gr_motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
             # lower to place
             self.send_pose(x_place, y_place, z_place, pitch=pitch_place)
-            while not self.motion_done:
+            while not self.motion_done and self.gr_motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
-            # # release cube
-            # self.send_gr_pose(open=True)
-            # while not self.gr_motion_done:
-            #     rclpy.spin_once(self, timeout_sec=0.1)
+            # release cube
+            self.send_gr_pose(open=True)
+            while not self.motion_done and self.gr_motion_done:
+                rclpy.spin_once(self, timeout_sec=0.1)
 
             # lift away
             self.send_pose(x_place, y_place, z_hover, pitch=pitch_place)
-            while not self.motion_done:
+            while not self.motion_done and self.gr_motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
             # increase stacking height for next cube
@@ -228,10 +228,10 @@ def main(args=None):
     place_y = float(place_y_str)
 
     # Fixed Z for placing (can be parameterised later)
-    place_z = 0.03
+    place_z = 0.05
     place_position = [place_x, place_y, place_z]
 
-    time.sleep(12)  # wait for everything to initialize
+    time.sleep(5.0)  # wait for everything to initialize
     rclpy.init(args=args)
     node = MoveItEEClient()
 
