@@ -124,7 +124,7 @@ class CubeDetectionNode(Node):
     def is_cube(self, contour, color):
         """Check if contour is a plausible cube"""
         area = cv2.contourArea(contour)
-        if area < 1000 or area > 50000:
+        if area < 3000 or area > 50000:
             return None
 
         epsilon = 0.04 * cv2.arcLength(contour, True)

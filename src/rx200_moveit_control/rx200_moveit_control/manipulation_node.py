@@ -49,13 +49,13 @@ class MoveItEEClient(Node):
 
         req = MotionPlanRequest()
         req.group_name = self.gripper_group
-        req.allowed_planning_time = 2.0
-        req.num_planning_attempts = 2
+        req.allowed_planning_time = 5.0
+        req.num_planning_attempts = 10
 
         jc = JointConstraint()
         jc.joint_name = self.gripper_joint
-        jc.position = 0.05 if open else 0.0215
-        jc.tolerance_above = jc.tolerance_below = 0.01
+        jc.position = 0.05 if open else 0.029
+        jc.tolerance_above = jc.tolerance_below = 0.001
         jc.weight = 1.0
 
         goal_constraints = Constraints(joint_constraints=[jc])
@@ -68,47 +68,57 @@ class MoveItEEClient(Node):
         future = self._client.send_goal_async(goal, feedback_callback=self._feedback_cb)
         future.add_done_callback(self._goal_response_cb)
 
-    def send_pose(self, x, y, z, roll=0.0, pitch=0.0):
-        self.motion_done = False
-        self.get_logger().info(f"Moving to: ({x:.3f}, {y:.3f}, {z:.3f})")
+        # block until this gripper motion finishes
+        while not self.gr_motion_done and rclpy.ok():
+            rclpy.spin_once(self, timeout_sec=0.1)
 
+
+    def send_pose(self, x, y, z, roll=0.0, pitch=0.0):
+        """Send end-effector pose goal"""
+        self.motion_done = False
+        self.get_logger().info(f"[ARM] Moving to: ({x:.3f}, {y:.3f}, {z:.3f})")
+        
         pose = PoseStamped()
         pose.header.frame_id = self.base_link
         pose.pose.position.x, pose.pose.position.y, pose.pose.position.z = x, y, z
-
+        
         yaw = math.atan2(y, x)
         q = quaternion_from_euler(roll, pitch, yaw)
         pose.pose.orientation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
-
+        
         req = MotionPlanRequest()
         req.group_name = self.arm_group
         req.allowed_planning_time = 5.0
-        req.num_planning_attempts = 3
+        req.num_planning_attempts = 10
 
+        # Slow down motion: values in (0, 1]
+        req.max_velocity_scaling_factor = 0.1
+        req.max_acceleration_scaling_factor = 0.1
+        
         pc = PositionConstraint()
         pc.header.frame_id = self.base_link
         pc.link_name = self.ee_link
-        sp = SolidPrimitive(type=SolidPrimitive.SPHERE, dimensions=[0.001])
+        sp = SolidPrimitive(type=SolidPrimitive.SPHERE, dimensions=[0.005])
         pc.constraint_region.primitives = [sp]
         pc.constraint_region.primitive_poses = [pose.pose]
-
+        
         oc = OrientationConstraint()
         oc.header.frame_id = self.base_link
         oc.link_name = self.ee_link
         oc.orientation = pose.pose.orientation
         oc.absolute_x_axis_tolerance = oc.absolute_y_axis_tolerance = oc.absolute_z_axis_tolerance = 0.001
         oc.weight = 1.0
-
+        
         goal_constraints = Constraints(position_constraints=[pc], orientation_constraints=[oc])
         req.goal_constraints = [goal_constraints]
-
+        
         goal = MoveGroup.Goal()
         goal.request = req
         goal.planning_options.plan_only = False
-
+        
         future = self._client.send_goal_async(goal, feedback_callback=self._feedback_cb)
         future.add_done_callback(self._goal_response_cb)
-
+        
     def _goal_response_cb(self, future):
         goal_handle = future.result()
         if not goal_handle.accepted:
@@ -130,7 +140,7 @@ class MoveItEEClient(Node):
         state = getattr(feedback_msg.feedback, "state", "<unknown>")
         self.get_logger().debug(f"[Feedback] {state}")
 
-    def move_upright(self, upright_coords=[0.15, 0.0, 0.35], pitch=math.radians(30)):
+    def move_upright(self, upright_coords=[0.12, 0.0, 0.39], pitch=math.radians(30)):
         x, y, z = upright_coords
         self.send_pose(x, y, z, pitch=pitch)
         while not self.motion_done:
@@ -138,17 +148,18 @@ class MoveItEEClient(Node):
 
     def cubes_callback(self, msg):
         """Receive cube positions from vision node"""
-        try:
-            self.cubes_data = dict(json.loads(msg.data))
-            if len(self.cubes_data)==1:
-                self.cubes_received = True
-        except json.JSONDecodeError as e:
-            self.get_logger().error(f'Invalid JSON from vision: {e}')
+        if not self.cubes_received: 
+            try:
+                self.cubes_data = dict(json.loads(msg.data))
+                if {k.lower() for k in self.cubes_data} == {"yellow", "red", "blue"}:
+                    self.cubes_received = True
+            except json.JSONDecodeError as e:
+                self.get_logger().error(f'Invalid JSON from vision: {e}')
 
     def pick_place_cubes(self, cubes_data: dict, color_order: list, place_position: list, stacking_height=0.0425):
         # reorder according to color_order
-        # cubes_data = {k.lower(): v for k, v in cubes_data.items()} # conver all keys into lowercase
-        # cubes_data = {key: cubes_data[key] for key in color_order}
+        cubes_data = {k.lower(): v for k, v in cubes_data.items()} # conver all keys into lowercase
+        cubes_data = {key: cubes_data[key] for key in color_order}
         x_place, y_place, z_place = place_position[0], place_position[1], place_position[2]
 
         # open gripper
@@ -160,10 +171,12 @@ class MoveItEEClient(Node):
             self.get_logger().info(f"Picking up {key} cube...")
 
             x_pick, y_pick, z_hover = value[0], value[1], 0.2
-            z_pick = 0.035
+            z_pick = 0.02
 
             # hover over the cube
             pitch = 1.57
+            pitch_place = 1.57
+
             self.send_pose(x_pick, y_pick, z_hover, pitch=pitch)
             while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
@@ -175,35 +188,36 @@ class MoveItEEClient(Node):
 
             # close gripper
             self.send_gr_pose(open=False)
-            while not self.gr_motion_done and not self.motion_done:
+            while not self.gr_motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
             # lift up
             self.send_pose(x_pick, y_pick, z_hover, pitch=pitch)
-            while not self.motion_done and self.gr_motion_done:
+            while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
             # move to place
             self.get_logger().info(f"Placing down {key} cube...")
-            pitch_place = 1.57
             self.send_pose(x_place, y_place, z_hover, pitch=pitch_place)
-            while not self.motion_done and self.gr_motion_done:
+            while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
             # lower to place
             self.send_pose(x_place, y_place, z_place, pitch=pitch_place)
-            while not self.motion_done and self.gr_motion_done:
+            while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
             # release cube
             self.send_gr_pose(open=True)
-            while not self.motion_done and self.gr_motion_done:
+            while not self.gr_motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
 
             # lift away
             self.send_pose(x_place, y_place, z_hover, pitch=pitch_place)
-            while not self.motion_done and self.gr_motion_done:
+            while not self.motion_done:
                 rclpy.spin_once(self, timeout_sec=0.1)
+
+            self.move_upright()
 
             # increase stacking height for next cube
             z_place += stacking_height
@@ -222,13 +236,17 @@ def main(args=None):
     place_x_str = sys.argv[2]
     place_y_str = sys.argv[3]
 
+    cube_order_str = "red, yellow, blue"
+    place_x_str = 0.2
+    place_y_str = 0.15
+
     # Parse inputs
     color_order = [c.strip() for c in cube_order_str.split(',')]
     place_x = float(place_x_str)
     place_y = float(place_y_str)
 
     # Fixed Z for placing (can be parameterised later)
-    place_z = 0.05
+    place_z = 0.03
     place_position = [place_x, place_y, place_z]
 
     time.sleep(5.0)  # wait for everything to initialize
@@ -241,9 +259,7 @@ def main(args=None):
 
     # Move to upright
     node.move_upright()
-    # Vision node needs to be called here
-
-
+    # Vision node needs to be called now
 
     while True:
         if node.cubes_received:
@@ -255,7 +271,9 @@ def main(args=None):
             node.get_logger().info("Pick and place finished.")
             break
 
-        node.get_logger().info("Not all cubes have been detected yet")
+        node.get_logger().info(f"All cubes detected: {node.cubes_received}")
+
+        # node.get_logger().info("Not all cubes have been detected yet")
         rclpy.spin_once(node)
 
     rclpy.shutdown()
