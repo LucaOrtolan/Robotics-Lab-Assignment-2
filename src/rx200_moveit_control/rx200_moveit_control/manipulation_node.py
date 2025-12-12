@@ -24,17 +24,14 @@ class MoveItEEClient(Node):
         while not self._client.wait_for_server(timeout_sec=1.0):
             self.get_logger().warning("Waiting for MoveGroup action server...")
 
-        # MoveIt group names used by this robot
         self.arm_group = "interbotix_arm"
         self.gripper_group = "interbotix_gripper"
 
-        # Defaults
         self.group_name = self.arm_group
         self.ee_link = "rx200/ee_gripper_link"
         self.base_link = "rx200/base_link"
-        self.gripper_joint = "left_finger"  # change if your gripper uses different joint names
+        self.gripper_joint = "left_finger"
 
-        # Subscriber for cube detection
         self.cubes_data = None
         self.cubes_received = False
         self.subscription = self.create_subscription(
@@ -68,13 +65,7 @@ class MoveItEEClient(Node):
         future = self._client.send_goal_async(goal, feedback_callback=self._feedback_cb)
         future.add_done_callback(self._goal_response_cb)
 
-        # block until this gripper motion finishes
-        while not self.gr_motion_done and rclpy.ok():
-            rclpy.spin_once(self, timeout_sec=0.1)
-
-
     def send_pose(self, x, y, z, roll=0.0, pitch=0.0):
-        """Send end-effector pose goal"""
         self.motion_done = False
         self.get_logger().info(f"[ARM] Moving to: ({x:.3f}, {y:.3f}, {z:.3f})")
         
@@ -91,7 +82,6 @@ class MoveItEEClient(Node):
         req.allowed_planning_time = 5.0
         req.num_planning_attempts = 10
 
-        # Slow down motion: values in (0, 1]
         req.max_velocity_scaling_factor = 0.1
         req.max_acceleration_scaling_factor = 0.1
         
@@ -147,16 +137,15 @@ class MoveItEEClient(Node):
             rclpy.spin_once(self, timeout_sec=0.1)
 
     def cubes_callback(self, msg):
-        """Receive cube positions from vision node"""
         if not self.cubes_received: 
             try:
                 self.cubes_data = dict(json.loads(msg.data))
                 if {k.lower() for k in self.cubes_data} == {"yellow", "red", "blue"}:
                     self.cubes_received = True
             except json.JSONDecodeError as e:
-                self.get_logger().error(f'Invalid JSON from vision: {e}')
+                self.get_logger().error(f'Invalid coordinates from vision: {e}')
 
-    def pick_place_cubes(self, cubes_data: dict, color_order: list, place_position: list, stacking_height=0.0425):
+    def pick_place_cubes(self, cubes_data: dict, color_order: list, place_position: list, stacking_height=0.0405):
         # reorder according to color_order
         cubes_data = {k.lower(): v for k, v in cubes_data.items()} # conver all keys into lowercase
         cubes_data = {key: cubes_data[key] for key in color_order}
@@ -224,10 +213,6 @@ class MoveItEEClient(Node):
 
 
 def main(args=None):
-    # Expect: sys.argv[1] = cube_order (e.g. "red,blue,yellow")
-    #         sys.argv[2] = place_x (float)
-    #         sys.argv[3] = place_y (float)
-    # They come from the launch file via `arguments=[cube_order, place_x, place_y]`. [web:39][web:48]
     if len(sys.argv) < 4:
         print("Usage: manipulation_node <cube_order> <place_x> <place_y>")
         return
@@ -236,20 +221,15 @@ def main(args=None):
     place_x_str = sys.argv[2]
     place_y_str = sys.argv[3]
 
-    cube_order_str = "red, yellow, blue"
-    place_x_str = 0.2
-    place_y_str = 0.15
-
-    # Parse inputs
     color_order = [c.strip() for c in cube_order_str.split(',')]
     place_x = float(place_x_str)
     place_y = float(place_y_str)
 
-    # Fixed Z for placing (can be parameterised later)
-    place_z = 0.03
+    place_z = 0.025
     place_position = [place_x, place_y, place_z]
 
-    time.sleep(5.0)  # wait for everything to initialize
+    time.sleep(5.0)
+
     rclpy.init(args=args)
     node = MoveItEEClient()
 
@@ -257,9 +237,7 @@ def main(args=None):
         f"Received order: {color_order}, place position: ({place_x:.3f}, {place_y:.3f}, {place_z:.3f})"
     )
 
-    # Move to upright
     node.move_upright()
-    # Vision node needs to be called now
 
     while True:
         if node.cubes_received:
@@ -271,9 +249,7 @@ def main(args=None):
             node.get_logger().info("Pick and place finished.")
             break
 
-        node.get_logger().info(f"All cubes detected: {node.cubes_received}")
-
-        # node.get_logger().info("Not all cubes have been detected yet")
+        node.get_logger().info("Not all cubes have been detected yet")
         rclpy.spin_once(node)
 
     rclpy.shutdown()

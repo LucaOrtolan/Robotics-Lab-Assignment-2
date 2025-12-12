@@ -1,13 +1,3 @@
-#!/usr/bin/env python3
-
-"""
-FINAL FIXED Cube Detection & Localization Vision Node for RX200
-
-- Correct 3D transformation for wrist-mounted RealSense
-- Unproject in camera_depth_optical_frame
-- Use depth_msg timestamp for TF
-"""
-
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image, CameraInfo
@@ -22,10 +12,7 @@ import threading
 from std_msgs.msg import String
 import json
 
-
-
 class CubeDetectionNode(Node):
-    """Cube detection with correct 3D transform from camera to base"""
 
     def __init__(self):
         super().__init__('cube_detection_node')
@@ -47,14 +34,9 @@ class CubeDetectionNode(Node):
             'Yellow':(np.array([10, 50, 80]),  np.array([50, 255, 255])),
         }
 
-        # Cube positions publisher
-        self.cube_positions_pub = self.create_publisher(
-            String, 
-            '/detected_cubes', 
-            10
-        )
+        self.cube_positions_pub = self.create_publisher(String, 
+            '/detected_cubes', 10)
 
-        # Subscribers (synchronized RGB + depth)
         self.image_sub = Subscriber(self, Image, '/camera/camera/color/image_raw')
         self.depth_sub = Subscriber(self, Image, '/camera/camera/depth/image_rect_raw')
         self.ts = ApproximateTimeSynchronizer(
@@ -74,7 +56,7 @@ class CubeDetectionNode(Node):
         self.create_timer(1.0, self.log_cube_positions)
         self.create_timer(1.0, self.publish_cube_positions)
 
-        self.get_logger().info('✓ Cube Detection Node Initialized (FINAL FIX)')
+        self.get_logger().info('Cube Detection Node Initialized (FINAL FIX)')
         self.get_logger().info('Waiting for camera images...')
 
     def camera_info_callback(self, msg: CameraInfo):
@@ -88,7 +70,6 @@ class CubeDetectionNode(Node):
             )
 
     def synchronized_callback(self, color_msg: Image, depth_msg: Image):
-        """Process synchronized color + depth frames"""
         try:
             cv_color = self.bridge.imgmsg_to_cv2(color_msg, desired_encoding='bgr8')
             cv_depth = self.bridge.imgmsg_to_cv2(depth_msg, desired_encoding='16UC1')
@@ -103,7 +84,6 @@ class CubeDetectionNode(Node):
             self.get_logger().error(f'Error: {str(e)}')
 
     def detect_cubes(self, image):
-        """Detect colored cubes in RGB image"""
         hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         with self.lock:
             self.detected_cubes = []
@@ -122,7 +102,6 @@ class CubeDetectionNode(Node):
                         self.detected_cubes.append(cube_info)
 
     def is_cube(self, contour, color):
-        """Check if contour is a plausible cube"""
         area = cv2.contourArea(contour)
         if area < 3000 or area > 50000:
             return None
@@ -160,11 +139,7 @@ class CubeDetectionNode(Node):
         }
 
     def calculate_3d_positions(self, depth_image, depth_msg: Image):
-        """
-        Correct 3D transformation using:
-        - Unprojection in camera_depth_optical_frame
-        - TF to rx200/base_link with depth timestamp
-        """
+
         with self.lock:
             cubes = self.detected_cubes.copy()
 
@@ -183,7 +158,6 @@ class CubeDetectionNode(Node):
 
                 cube['depth_mm'] = depth_mm
 
-                # Step 1: unproject pixel (u, v, depth) into camera optical frame
                 fx = self.camera_matrix[0, 0]
                 fy = self.camera_matrix[1, 1]
                 cx_intrinsic = self.camera_matrix[0, 2]
@@ -193,7 +167,6 @@ class CubeDetectionNode(Node):
                 y_cam = (v - cy_intrinsic) * depth_m / fy
                 z_cam = depth_m
 
-                # Step 2: transform point to base_link using TF at depth timestamp
                 try:
                     point_camera = PointStamped()
                     point_camera.header.frame_id = 'camera_depth_optical_frame'
@@ -213,7 +186,6 @@ class CubeDetectionNode(Node):
                     cube['world_z'] = point_base.point.z
 
                 except Exception as tf_error:
-                    # Fallback: latest available transform
                     try:
                         transform = self.tf_buffer.lookup_transform(
                             'rx200/base_link',
@@ -247,48 +219,36 @@ class CubeDetectionNode(Node):
             self.detected_cubes = cubes
 
     def log_cube_positions(self):
-        """Log cube positions periodically"""
         with self.lock:
             cubes = self.detected_cubes.copy()
 
         if not cubes:
             return
-
-        self.get_logger().info(f'Frame {self.frame_count}: {len(cubes)} cubes detected')
-        for cube in sorted(cubes, key=lambda x: x['color']):
-            if cube['world_x'] is not None:
-                self.get_logger().info(
-                    f"  {cube['color']}: "
-                    f"({cube['world_x']:.3f}, {cube['world_y']:.3f}, {cube['world_z']:.3f})"
-                )
 
     def publish_cube_positions(self):
-        """Publish detected cubes as JSON string for manipulator"""
         with self.lock:
             cubes = self.detected_cubes.copy()
         
         if not cubes:
             return
         
-        # Create dict with color -> [x,y,z] format expected by manipulator
         cubes_dict = {}
         for cube in cubes:
             if cube['world_x'] is not None:
-                color_key = cube['color'].lower()  # 'red', 'blue', 'yellow'
+                color_key = cube['color'].lower()
                 cubes_dict[color_key] = [
                     float(cube['world_x']),
                     float(cube['world_y']), 
-                    float(cube['world_z']) + 0.03  # Hover offset for pick
+                    float(cube['world_z']) + 0.03
                 ]
 
         msg = String()
         msg.data = json.dumps(cubes_dict)
         self.cube_positions_pub.publish(msg)
-        self.get_logger().info(f'Published {len(cubes_dict)} cubes: {msg.data}')
+        #self.get_logger().info(f'Published {len(cubes_dict)} cubes: {msg.data}')
 
 
     def display_results(self, image):
-        """Simple live feed with cube overlays"""
         try:
             with self.lock:
                 cubes = self.detected_cubes.copy()
