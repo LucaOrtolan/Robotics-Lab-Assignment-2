@@ -28,4 +28,4 @@ Group members:
 - Luca Ortolan
 - Saandeep Guddanti
 
-<video src="https://github.com/LucaOrtolan/Robotics-Lab-Assignment-2/blob/main/WhatsApp%20Video%202025-12-11%20at%207.16.56%20PM.mp4></video>
+<video src="https://github.com/LucaOrtolan/Robotics-Lab-Assignment-2/blob/main/WhatsApp%20Video%202025-12-11%20at%207.16.56%20PM.mp4" " width="640" height="480" controls></video>
