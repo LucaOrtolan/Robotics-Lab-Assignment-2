@@ -15,7 +15,7 @@ Once verified, the script will call the ROS launch file: `main.launch.py`.
 
 The launch file incorporates the following nodes:
 - `robot_state_publisher` loads the robot's modified URDF file (that includes the camera mount mesh) and publishes the joint states
-- `moveit_lTo run the code, naunch` calls the moveit package launch file from interbotix that enables movement for the robot
+- `moveit_launch` calls the moveit package launch file from interbotix that enables movement for the robot
 - `camera_mount_tf` publishes the fixed transformation of the camera frame, it's needed to perform inverse kinematics using the camera POV as center point
 - `realsense_node` initializes the realsense D415 camera mounted on the wrist
 - `vision_node` performs color detection and publishes the cubes coordinates for the manipulation node
