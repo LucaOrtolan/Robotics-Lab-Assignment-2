@@ -1,37 +1,29 @@
-To run:
-Step 1. colcon build
-Step 2. . install/setup.bash
-Step 3  .python3 src/rx200_moveit_control/launch/run.py
+This package contains code to run the RX200 interbotix robot arm to perform pick and place using coloured cubes. The project leverages the cv2 python library to extract cubes coordinates in the workspace. Vision is enabled by an Intel RealSense D415 camera mounted on top of the arm. The code also uses the Interbotix MoveIt package to initialize the camera and send movement commands to the arm.
 
-The flow:
-1. User Input & Launch (run.py): The user runs your command-line interface (run.py) which:
+To run the code, navigate to the folder's path and run the following commands:
 
-    Prompts for the cube order (e.g., red, yellow, blue)
-    Prompts for the place coordinates (x, y position in workspace)
-    Validates inputs and launches the full ROS system via main.launch.py with these parameters
+`colcon build`
 
-2. System Initialization (main.launch.py): When the launch file starts, it brings up components in sequence:
+`source install/setup.bash`
 
-    Robot State Publisher: Loads the robot URDF and publishes joint states
-    MoveIt: Initializes motion planning, RViz visualization, and planning scene
-    Camera Static TF: Publishes the fixed transform from wrist_link → camera_link (10.5cm forward, 4cm right, 11cm up, 45° pitch)
-    RealSense Camera Node: Begins streaming RGB and depth images
-    #Planning Scene Updater: Adds the camera geometry to MoveIt's collision checking
-    Vision Node: Starts cube detection pipeline
-    Manipulation Node: Prepares arm movements (but waits for cube detection)
+Execute the `run.py` script using:
 
-3. Cube Detection (vision_node.py): This node runs continuously in a perception loop:
+`python3 src/rx200_moveit_control/launch/run.py`
 
-    Synchronized frame capture: Waits for aligned RGB + depth images from RealSense
-    Color-based detection: Applies HSV thresholding to find red, yellow, and blue cubes in the image
-    Contour validation: Filters for square-shaped objects with correct size
-    Depth unprojection: Converts pixel coordinates + depth → 3D point in camera frame
-    Coordinate transform: Uses TF to transform 3D points from camera_link → rx200/base_link
-    Output: Publishes detected cube positions (x, y, z) in the robot's base frame
+The terminal will ask for the cubes' pick-up order and the x-y coordinates of the place point. It validates the inserted parameters and if incorrect, it will ask for them again. 
+Once verified, the script will call the ROS launch file: `main.launch.py`.
 
-4. Manipulation & Execution (manipulation_node.py): Once cubes are detected, the manipulation node:
+The launch file incorporates the following nodes:
+- `robot_state_publisher` loads the robot's modified URDF file (that includes the camera mount mesh) and publishes the joint states
+- `moveit_lTo run the code, naunch` calls the moveit package launch file from interbotix that enables movement for the robot
+- `camera_mount_tf` publishes the fixed transformation of the camera frame, it's needed to perform inverse kinematics using the camera POV as center point
+- `realsense_node` initializes the realsense D415 camera mounted on the wrist
+- `vision_node` performs color detection and publishes the cubes coordinates for the manipulation node
+- `manipulation_node` regulates robot movement: it first moves upright to get a better view of the workspace and, once obtained the coordinates, it performs the pick and place motion 
 
-    Waits for cube positions from the vision node
-    Plans motion using MoveIt2 to navigate above each cube in the specified order
-    Executes pick-and-place: Move to cube → descend → grip → move to place position → release
-    Updates scene: Removes picked cube from collision checking so subsequent cubes are reachable
+The `planning_scene_node` was originally being used for adding camera geometry for moveit but it was later replaced by the updated URDF file, called by the `robot_state_publisher`
+
+Group members:
+- Rishabh Jain 
+- Luca Ortolan
+- Saandeep Guddanti
